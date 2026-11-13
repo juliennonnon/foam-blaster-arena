@@ -256,7 +256,9 @@ fr:{teamB:'Équipe Bleue',teamR:'Équipe Rouge',ctf:'Capture de drapeau',carry:'
  hit:'Touché !<br>Retour au camp dans {0}…',win0:'Victoire des Bleus !',win1:'Victoire des Rouges…',draw:'Égalité !',scoreLine:'Bleus {0} — {1} Rouges',
  pause:'Pause',pauseCode:'Pause — code de la partie : {0}',
  soloIntro:"Tu joues dans l'<b>équipe bleue</b>. L'équipe qui a le plus de drapeaux après 5 minutes gagne.",
- creating:'Création de la partie…',connecting:'Connexion…',noGame:'Aucune partie avec ce code.',
+ creating:'Création de la partie…',connecting:'Connexion au serveur…',
+ hostStep:"Partie trouvée, connexion à l'autre ordinateur…",blocked:"Partie trouvée, mais la connexion directe entre les deux ordinateurs est bloquée (réseau d'entreprise ou d'école, VPN, pare-feu).",
+ incoming:'Un joueur se connecte…',joinedT:'Un joueur a rejoint la partie !',noGame:'Aucune partie avec ce code.',
  noRtc:'Le multijoueur ne fonctionne pas dans cet aperçu : utilise la version en ligne.',connFail:'Connexion impossible ({0}). Réessaie.',
  need4:'Entre le code à 4 lettres.',created:'Partie créée ! Donne ce code aux autres joueurs :',joined:'Connecté à la partie',
  netTest:'Test réseau',player1:'1 joueur',players:'{0} joueurs',
@@ -274,7 +276,9 @@ en:{teamB:'Blue Team',teamR:'Red Team',ctf:'Capture the Flag',carry:'You have th
  hit:'Tagged!<br>Back to base in {0}…',win0:'Blue team wins!',win1:'Red team wins…',draw:"It's a draw!",scoreLine:'Blue {0} — {1} Red',
  pause:'Paused',pauseCode:'Paused — game code: {0}',
  soloIntro:"You play on the <b>blue team</b>. The team with the most flags after 5 minutes wins.",
- creating:'Creating game…',connecting:'Connecting…',noGame:'No game found with this code.',
+ creating:'Creating game…',connecting:'Connecting to server…',
+ hostStep:'Game found, connecting to the other computer…',blocked:'Game found, but the direct connection between the two computers is blocked (work or school network, VPN, firewall).',
+ incoming:'A player is connecting…',joinedT:'A player joined the game!',noGame:'No game found with this code.',
  noRtc:"Multiplayer doesn't work in this preview: use the online version.",connFail:'Could not connect ({0}). Try again.',
  need4:'Enter the 4-letter code.',created:'Game created! Share this code with the other players:',joined:'Connected to game',
  netTest:'Network test',player1:'1 player',players:'{0} players',
@@ -735,7 +739,7 @@ function newPeer(id){
 }
 function netFail(e){
   var ty=e&&e.type;
-  status(ty==='peer-unavailable'?t('noGame'):ty==='browser-incompatible'?t('noRtc'):t('connFail',ty||'error'));
+  status(ty==='peer-unavailable'?t('noGame'):ty==='browser-incompatible'?t('noRtc'):ty==='blocked'?t('blocked'):t('connFail',ty||'error'));
   busy(false);
 }
 function hostGame(tries){
@@ -744,8 +748,8 @@ function hostGame(tries){
   try{p=newPeer(PREFIX+code);}catch(e){netFail(e);return;}
   p.on('open',function(){net.peer=p;net.host=true;net.code=code;net.id='h';enterNet();});
   p.on('connection',function(c){
-    var id='p'+(net.n++);
-    c.on('open',function(){net.conns[id]=c;c.send({t:'welcome',id:id});});
+    var id='p'+(net.n++);toast(t('incoming'));
+    c.on('open',function(){net.conns[id]=c;c.send({t:'welcome',id:id});toast(t('joinedT'));sfx('ding');});
     c.on('data',function(d){hostData(id,d);});
     c.on('close',function(){delete net.conns[id];delete net.players[id];});
   });
@@ -760,9 +764,11 @@ function joinGame(){
   busy(true);status(t('connecting'));
   var p,done=false;
   try{p=newPeer();}catch(e){netFail(e);return;}
-  var timer=setTimeout(function(){if(!done){done=true;p.destroy();netFail({type:'peer-unavailable'});}},15000);
+  var timer=setTimeout(function(){if(!done){done=true;p.destroy();netFail({type:'blocked'});}},20000);
   p.on('open',function(){
-    var c=p.connect(PREFIX+code,{serialization:'json'});
+    var c=p.connect(PREFIX+code,{serialization:'json'});status(t('hostStep'));
+    var iv=setInterval(function(){var pc=c.peerConnection;if(done){clearInterval(iv);return;}
+      if(pc&&pc.iceConnectionState==='failed'){clearInterval(iv);done=true;clearTimeout(timer);p.destroy();netFail({type:'blocked'});}},500);
     c.on('data',function(d){
       if(d.t==='welcome'){if(!done){done=true;clearTimeout(timer);net.peer=p;net.host=false;net.code=code;net.id=d.id;net.hostConn=c;net.last=performance.now();enterNet();}}
       else clientData(d);
